@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LariKu – Pelatih Lari Pribadi</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0E1217">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.452.0/dist/umd/lucide.min.js"></script>
+<style>
+:root{--bg:#0E1217;--c:#171D25;--b:#252E3A;--t:#E8ECF1;--m:#8794A5;--a:#FF6B1A}
+body{background:var(--bg);color:var(--t);font-family:Barlow,sans-serif;padding-bottom:4.5rem}
+@media(min-width:768px){body{padding-bottom:0}}
+.h{font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.01em}
+.card{background:var(--c);border:1px solid var(--b);border-radius:14px}
+.btn{background:var(--a);color:#111;font-weight:600;border-radius:10px;padding:.5rem .9rem;display:inline-flex;gap:.4rem;align-items:center;transition:filter .15s}
+.btn:hover{filter:brightness(1.1)}
+.gh{border:1px solid var(--b);border-radius:10px;padding:.5rem .9rem;display:inline-flex;gap:.4rem;align-items:center;transition:background .15s}
+.gh:hover{background:var(--b)}
+.in{background:var(--bg);border:1px solid var(--b);border-radius:8px;padding:.5rem .6rem;width:100%;color:inherit}
+.in:focus,button:focus-visible{outline:2px solid var(--a);outline-offset:1px}
+.mut{color:var(--m)}
+[data-t]{color:var(--m);transition:color .15s}
+[data-t].on{color:var(--a)}
+dialog{background:var(--c);color:var(--t);border:1px solid var(--b);border-radius:16px;padding:1.25rem;width:min(92vw,26rem)}
+dialog::backdrop{background:#000a}
+.bar{transition:height .4s}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="max-w-6xl mx-auto px-4 pt-5 flex items-center justify-between">
+  <div class="h text-3xl flex items-center gap-2"><i data-lucide="footprints" class="w-7 h-7" style="color:var(--a)"></i>LariKu</div>
+  <nav class="fixed bottom-0 inset-x-0 z-20 flex justify-around py-2 border-t md:static md:border-0 md:gap-6 md:py-0 md:justify-end" style="background:var(--c);border-color:var(--b)">
+    <button data-t="dash" onclick="go('dash')" class="flex flex-col md:flex-row items-center gap-1 text-xs md:text-sm"><i data-lucide="layout-dashboard" class="w-5 h-5"></i>Ringkasan</button>
+    <button data-t="sched" onclick="go('sched')" class="flex flex-col md:flex-row items-center gap-1 text-xs md:text-sm"><i data-lucide="calendar-days" class="w-5 h-5"></i>Jadwal</button>
+    <button data-t="data" onclick="go('data')" class="flex flex-col md:flex-row items-center gap-1 text-xs md:text-sm"><i data-lucide="database" class="w-5 h-5"></i>Data</button>
+    <button data-t="strava" onclick="go('strava')" class="flex flex-col md:flex-row items-center gap-1 text-xs md:text-sm"><i data-lucide="refresh-cw" class="w-5 h-5"></i>Strava</button>
+  </nav>
+</header>
+<main id="v" class="max-w-6xl mx-auto px-4 py-5"></main>
+
+<dialog id="dlg">
+  <form onsubmit="saveW(event)" class="grid gap-3">
+    <h3 class="h text-2xl" id="dt">Tambah latihan</h3>
+    <input type="hidden" name="id">
+    <label class="text-sm mut">Tanggal<input class="in mt-1" type="date" name="date" required></label>
+    <label class="text-sm mut">Jenis latihan<select class="in mt-1" name="type" id="ty"></select></label>
+    <div class="grid grid-cols-2 gap-3">
+      <label class="text-sm mut">Jarak (km)<input class="in mt-1" type="number" step="0.1" min="0" name="km"></label>
+      <label class="text-sm mut">Durasi (menit)<input class="in mt-1" type="number" min="0" name="min"></label>
+    </div>
+    <label class="text-sm mut">Catatan<input class="in mt-1" name="note" maxlength="80"></label>
+    <div class="flex justify-end gap-2"><button type="button" class="gh" onclick="dlg.close()">Batal</button><button class="btn">Simpan latihan</button></div>
+  </form>
+</dialog>
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-20 md:bottom-6 z-50 card px-4 py-2 text-sm hidden"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const TYPES={easy:['Easy run','#4ADE80'],long:['Long run','#60A5FA'],interval:['Interval','#FF6B1A'],tempo:['Tempo','#F5C542'],strength:['Strength','#C084FC'],core:['Core','#2DD4BF'],rest:['Rest day','#8794A5']};
+const RUN=['easy','long','interval','tempo'];
+const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
+const store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const iso=d=>{const z=new Date(d);z.setMinutes(z.getMinutes()-z.getTimezoneOffset());return z.toISOString().slice(0,10)};
+const addDays=(d,n)=>{const x=new Date(d);x.setDate(x.getDate()+n);return x};
+const monday=d=>{const x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x};
+const fdate=(s,o)=>new Date(s+'T00:00:00').toLocaleDateString('id-ID',o||{weekday:'short',day:'numeric',month:'short'});
+const fp=(m,k)=>{if(!k||!m)return'–';const s=Math.round(m*60/k);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const fd=m=>Math.floor(m/60)+'j '+String(m%60).padStart(2,'0')+'m';
+const km2=(a,b)=>{const R=6371,r=Math.PI/180,p=(b[0]-a[0])*r,q=(b[1]-a[1])*r,x=Math.sin(p/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(q/2)**2;return 2*R*Math.asin(Math.sqrt(x))};
+const dist=p=>p.reduce((s,q,i)=>i?s+km2(p[i-1],q):0,0);
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.add('hidden'),3200)}
+
+/* ---------- State ---------- */
+function seed(){const m=monday(new Date()),t=iso(new Date()),pl=[['easy',5,35,'Santai, napas teratur'],['strength',0,40,'Squat, lunge, deadlift'],['interval',6,40,'6 x 400 m'],['core',0,20,'Plank dan russian twist'],['rest',0,0,''],['tempo',7,42,'20 menit tempo'],['long',12,76,'Pace nyaman']];
+  return pl.map((p,i)=>{const d=iso(addDays(m,i));return{id:uid(),date:d,type:p[0],km:p[1],min:p[2],note:p[3],done:d<t&&p[0]!=='rest'}})}
+let S={w:load('lk_w',null),st:load('lk_st',{on:false,mode:'',acts:[],cfg:{}})};
+if(!S.w){S.w=seed();store('lk_w',S.w)}
+let tab='dash',period='w',wk=monday(new Date());
+const saveAll=()=>{store('lk_w',S.w);store('lk_st',S.st)};
+const runs=()=>[...S.w.filter(w=>w.done&&RUN.includes(w.type)&&!w.sid&&+w.km).map(w=>({date:w.date,km:+w.km,min:+w.min||0,cal:Math.round(w.km*65)})),...S.st.acts];
+
+/* ---------- Dashboard ---------- */
+function dash(){
+  const now=new Date(),td=iso(now),s=iso(period==='w'?monday(now):addDays(now,-29));
+  const rs=runs().filter(r=>r.date>=s&&r.date<=td),sum=k=>rs.reduce((a,r)=>a+r[k],0),km=sum('km'),mn=sum('min'),cal=sum('cal');
+  const m0=monday(now),wks=[...Array(6)].map((_,i)=>{const a=addDays(m0,(i-5)*7),a1=iso(a),a2=iso(addDays(a,6));return{l:a.getDate()+'/'+(a.getMonth()+1),v:runs().filter(r=>r.date>=a1&&r.date<=a2).reduce((x,r)=>x+r.km,0)}});
+  const mx=Math.max(10,...wks.map(w=>w.v)),wm=iso(m0),we=iso(addDays(m0,6));
+  const pl=S.w.filter(w=>w.date>=wm&&w.date<=we&&w.type!=='rest'),dn=pl.filter(w=>w.done).length,pct=pl.length?Math.round(dn/pl.length*100):0;
+  const nx=S.w.filter(w=>!w.done&&w.type!=='rest'&&w.date>=td).sort((a,b)=>a.date.localeCompare(b.date))[0];
+  const st=(i,l,v)=>`<div class="card p-4"><i data-lucide="${i}" class="w-5 h-5 mb-2" style="color:var(--a)"></i><div class="h text-3xl">${v}</div><div class="text-sm mut">${l}</div></div>`;
+  return `<div class="flex items-end justify-between flex-wrap gap-3 mb-5">
+    <div><div class="mut text-sm">${period==='w'?'Minggu ini':'30 hari terakhir'}</div><div class="h text-7xl leading-none" style="color:var(--a)">${km.toFixed(1)}<span class="text-3xl mut"> km</span></div></div>
+    <div class="flex card p-1"><button class="gh border-0 ${period==='w'?'!bg-[var(--b)]':''}" onclick="period='w';render()">Mingguan</button><button class="gh border-0 ${period==='m'?'!bg-[var(--b)]':''}" onclick="period='m';render()">30 hari</button></div></div>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3">${st('timer','Waktu latihan',fd(mn))}${st('flame','Kalori terbakar',cal.toLocaleString('id-ID')+' kkal')}${st('gauge','Rata-rata pace',fp(mn,km)+' /km')}${st('route','Jumlah lari',rs.length+' sesi')}</div>
+  <div class="grid md:grid-cols-3 gap-3 mt-3">
+    <div class="card p-4 md:col-span-2"><div class="h text-xl mb-3">Jarak 6 minggu terakhir</div>
+      <div class="flex items-end gap-3 h-44">${wks.map(w=>`<div class="flex-1 flex flex-col items-center justify-end h-full gap-1"><span class="text-xs mut">${w.v.toFixed(0)}</span><div class="bar w-full rounded-t-md" style="height:${Math.max(2,w.v/mx*100)}%;background:${w===wks[5]?'var(--a)':'#3A4656'}"></div><span class="text-xs mut">${w.l}</span></div>`).join('')}</div></div>
+    <div class="grid gap-3">
+      <div class="card p-4"><div class="h text-xl mb-2">Target minggu ini</div><div class="h text-4xl">${dn}/${pl.length}</div><div class="h-2 rounded-full mt-2" style="background:var(--b)"><div class="bar h-2 rounded-full" style="width:${pct}%;background:var(--a)"></div></div></div>
+      <div class="card p-4"><div class="h text-xl mb-2">Latihan berikutnya</div>${nx?`<b style="color:${TYPES[nx.type][1]}">${TYPES[nx.type][0]}</b><div class="text-sm mut">${fdate(nx.date)}${nx.km?', '+nx.km+' km':''}</div>`:'<div class="text-sm mut">Belum ada jadwal. Tambahkan di tab Jadwal.</div>'}</div>
+    </div></div>`;
+}
+
+/* ---------- Schedule ---------- */
+const wi=w=>{const[t,c]=TYPES[w.type];return `<div class="rounded-lg p-2 mb-2 text-sm" style="background:var(--bg);border-left:3px solid ${c}"><div class="flex items-center justify-between gap-1"><b style="color:${c}" class="${w.done?'line-through opacity-60':''}">${t}</b><span class="flex gap-1.5"><button title="Tandai selesai" onclick="tog('${w.id}')"><i data-lucide="${w.done?'check-circle-2':'circle'}" class="w-4 h-4"></i></button><button title="Ubah" onclick="openW('${w.date}','${w.id}')"><i data-lucide="pencil" class="w-4 h-4"></i></button><button title="Hapus" onclick="delW('${w.id}')"><i data-lucide="trash-2" class="w-4 h-4"></i></button></span></div>${+w.km||+w.min?`<div class="mut">${+w.km?w.km+' km':''}${+w.km&&+w.min?', ':''}${+w.min?w.min+' mnt':''}</div>`:''}${w.note?`<div class="mut text-xs">${esc(w.note)}</div>`:''}</div>`};
+function sched(){
+  const t=iso(new Date()),days=[...Array(7)].map((_,i)=>addDays(wk,i));
+  return `<div class="flex items-center justify-between mb-4 flex-wrap gap-2"><div class="h text-3xl">${fdate(iso(days[0]),{day:'numeric',month:'short'})} – ${fdate(iso(days[6]),{day:'numeric',month:'short',year:'numeric'})}</div>
+  <div class="flex gap-2"><button class="gh" title="Minggu sebelumnya" onclick="wk=addDays(wk,-7);render()"><i data-lucide="chevron-left" class="w-4 h-4"></i></button><button class="gh" onclick="wk=monday(new Date());render()">Minggu ini</button><button class="gh" title="Minggu berikutnya" onclick="wk=addDays(wk,7);render()"><i data-lucide="chevron-right" class="w-4 h-4"></i></button><button class="btn" onclick="openW('${iso(new Date())}')"><i data-lucide="plus" class="w-4 h-4"></i>Tambah latihan</button></div></div>
+  <div class="grid md:grid-cols-4 lg:grid-cols-7 gap-3">${days.map(d=>{const k=iso(d),ws=S.w.filter(w=>w.date===k);return `<div class="card p-3 ${k===t?'ring-1 ring-[var(--a)]':''}"><div class="flex justify-between items-center mb-2"><div><div class="h text-xl">${fdate(k,{weekday:'long'})}</div><div class="text-xs mut">${fdate(k,{day:'numeric',month:'short'})}</div></div><button class="gh !p-1" title="Tambah di hari ini" onclick="openW('${k}')"><i data-lucide="plus" class="w-4 h-4"></i></button></div>${ws.map(wi).join('')||'<div class="text-xs mut">Belum ada latihan</div>'}</div>`}).join('')}</div>`;
+}
+function openW(date,id){const f=$('#dlg form'),w=S.w.find(x=>x.id===id)||{date,type:'easy',km:'',min:'',note:''};
+  $('#dt').textContent=id?'Ubah latihan':'Tambah latihan';
+  f.id.value=id||'';f.date.value=w.date;f.type.value=w.type;f.km.value=w.km;f.min.value=w.min;f.note.value=w.note||'';dlg.showModal()}
+function saveW(e){e.preventDefault();const f=e.target,o={date:f.date.value,type:f.type.value,km:+f.km.value||0,min:+f.min.value||0,note:f.note.value.trim()};
+  if(f.id.value)Object.assign(S.w.find(x=>x.id===f.id.value),o);else S.w.push({id:uid(),done:false,...o});
+  saveAll();dlg.close();if(o.date<iso(wk)||o.date>iso(addDays(wk,6)))wk=monday(new Date(o.date+'T00:00:00'));render();toast('Latihan disimpan')}
+function tog(id){const w=S.w.find(x=>x.id===id);w.done=!w.done;saveAll();render()}
+function delW(id){if(!confirm('Hapus latihan ini?'))return;S.w=S.w.filter(x=>x.id!==id);saveAll();render();toast('Latihan dihapus')}
+
+/* ---------- Strava ---------- */
+const mock=()=>[[1,5.2,29],[3,8.1,46],[5,12.4,76],[8,5.0,28],[10,6.5,37],[12,14.2,88],[15,5.5,31],[17,7.2,40],[19,10,60],[22,5.1,29]].map(([d,k,m],i)=>({id:9e6+i,name:['Morning Run','Lunch Run','Long Run','Easy Run'][i%4],date:iso(addDays(new Date(),-d)),km:k,min:m,cal:Math.round(k*66)}));
+/* Struktur asli Strava API v3 (dipakai bila Client ID, Secret, dan Refresh Token diisi) */
+async function liveActs(c){
+  const tk=await fetch('https://www.strava.com/oauth/token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({client_id:c.id,client_secret:c.secret,refresh_token:c.rt,grant_type:'refresh_token'})});
+  if(!tk.ok)throw Error('Token ditolak Strava ('+tk.status+'). Periksa Client ID, Secret, dan Refresh Token.');
+  const t=await tk.json();if(t.refresh_token)c.rt=t.refresh_token; // Strava bisa memutar refresh token
+  const r=await fetch('https://www.strava.com/api/v3/athlete/activities?per_page=30',{headers:{Authorization:'Bearer '+t.access_token}});
+  if(!r.ok)throw Error('Gagal mengambil aktivitas ('+r.status+'). Pastikan scope activity:read_all.');
+  return (await r.json()).filter(x=>(x.sport_type||x.type)==='Run').map(x=>({id:x.id,name:x.name,date:x.start_date_local.slice(0,10),km:+(x.distance/1000).toFixed(2),min:Math.round(x.moving_time/60),cal:Math.round(x.calories||x.distance/1000*65)}));
+}
+async function conn(){
+  const c={id:$('#sid').value.trim(),secret:$('#ssec').value.trim(),rt:$('#srt').value.trim()};
+  S.st.cfg=c;S.st.mode=(c.id&&c.secret&&c.rt)?'live':'demo';await sync();
+}
+async function sync(){
+  if(S.st.mode==='csv')return toast('Mode impor CSV: unggah CSV terbaru untuk memperbarui data.');
+  try{const a=S.st.mode==='live'?await liveActs(S.st.cfg):mock();
+    S.st.acts=a;S.st.on=true;S.st.last=new Date().toISOString();
+    link(a);
+    saveAll();render();toast(a.length+' aktivitas lari tersinkron')}
+  catch(e){toast(e instanceof TypeError?'Permintaan diblokir browser (CORS). Gunakan proxy kecil atau mode demo.':e.message)}
+}
+function link(a){a.forEach(x=>{const w=S.w.find(w=>w.date===x.date&&RUN.includes(w.type)&&!w.sid);if(w){w.done=true;w.km=x.km;w.min=x.min;w.sid=x.id}})}
+function parseCSV(t){const r=[];let row=[],f='',q=false;
+  for(let i=0;i<t.length;i++){const c=t[i];
+    if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+    else if(c==='"')q=true;
+    else if(c===','){row.push(f);f=''}
+    else if(c==='\n'||c==='\r'){if(c==='\r'&&t[i+1]==='\n')i++;row.push(f);f='';r.push(row);row=[]}
+    else f+=c}
+  if(f||row.length){row.push(f);r.push(row)}return r}
+/* Impor activities.csv dari arsip Strava (akun gratis, tanpa API) */
+const BLN={jan:0,feb:1,mar:2,apr:3,mei:4,may:4,jun:5,jul:6,agu:7,agt:7,aug:7,sep:8,okt:9,oct:9,nov:10,des:11,dec:11};
+/* Tanggal arsip Strava (UTC): "17 Okt 2026, 22.55.44" atau "Jan 3, 2026, 12:34:56 PM" */
+function pdate(s){
+  const m=s.trim().match(/^(\d{1,2})\s+(\p{L}+)\.?\s+(\d{4}),?\s+(\d{1,2})[.:](\d{2})(?:[.:](\d{2}))?\s*(AM|PM)?/iu);
+  if(m){let hh=+m[4];const mo=BLN[m[2].slice(0,3).toLowerCase()];if(mo==null)return NaN;
+    if(m[7]){const q=m[7].toUpperCase();if(q==='PM'&&hh<12)hh+=12;if(q==='AM'&&hh===12)hh=0}
+    return new Date(Date.UTC(+m[3],mo,+m[1],hh,+m[5],+(m[6]||0)))}
+  return new Date(s+' UTC')}
+const num=v=>{v=(v||'').trim();return parseFloat(v.includes(',')&&!v.includes('.')?v.replace(',','.'):v.replace(/,/g,''))};
+function readActs(text){
+  const rows=parseCSV(text.replace(/^\uFEFF/,'')),h=rows[0].map(x=>x.trim()),fi=(...n)=>h.findIndex(x=>n.includes(x));
+  const iI=fi('Activity ID','ID Aktivitas'),iD=fi('Activity Date','Tanggal Aktivitas'),iN=fi('Activity Name','Nama Aktivitas'),iT=fi('Activity Type','Jenis aktivitas'),iM=fi('Moving Time','Waktu Bergerak'),iE=fi('Elapsed Time','Waktu Total'),iC=fi('Calories','Kalori');
+  const dc=h.map((x,i)=>x==='Distance'||x==='Jarak'?i:-1).filter(i=>i>=0),iK=dc[dc.length-1];
+  if([iI,iD,iT].includes(-1)||iK===undefined)throw Error('Format tidak dikenali. Pilih activities.csv dari arsip Strava.');
+  let skip=0,short=0;const a=[];
+  rows.slice(1).forEach(r=>{
+    if(!/run|lari/i.test(r[iT]||''))return;
+    const d=pdate(r[iD]||'');let k=num(r[iK]);
+    if(isNaN(d)||isNaN(k)){skip++;return}
+    k=(dc.length>1||k>300)?k/1000:k; // kolom Distance terakhir dalam meter
+    if(k<0.1){short++;return}
+    const sec=num(r[iM])||num(r[iE])||0;
+    a.push({id:r[iI],name:r[iN]||'Run',date:iso(d),km:+k.toFixed(2),min:Math.round(sec/60),cal:Math.round(num(r[iC])||k*65)});
+  });
+  return{a,skip,short};
+}
+async function importCSV(inp){
+  const file=inp.files[0];if(!file)return;
+  try{
+    const{a,skip,short}=readActs(await file.text());
+    if(!a.length)throw Error('Tidak ada aktivitas lari yang terbaca'+(skip?' ('+skip+' baris dilewati, format tanggal tidak dikenali)':'')+'.');
+    const m=new Map((S.st.mode==='csv'?S.st.acts:[]).map(x=>[String(x.id),x]));a.forEach(x=>m.set(String(x.id),x));
+    S.st.acts=[...m.values()];S.st.mode='csv';S.st.on=true;link(a);saveAll();render();
+    toast(a.length+' lari diimpor'+(short?', '+short+' sesi di bawah 0,1 km diabaikan':'')+(skip?', '+skip+' baris dilewati':''));
+  }catch(e){toast(e.message)}
+  inp.value='';
+}
+function disc(){S.st.on=false;S.st.mode='';S.st.acts=[];S.w.forEach(w=>delete w.sid);delete S.st.last;saveAll();render();toast('Data Strava dihapus')}
+function strava(){
+  const s=S.st,c=s.cfg||{};
+  return `<div class="grid md:grid-cols-2 gap-3"><div class="card p-4 grid gap-3 content-start">
+    <div class="flex items-center justify-between"><div class="h text-2xl">Akun Strava</div><span class="px-3 py-1 rounded-full text-sm" style="background:${s.on?'#4ADE8022':'var(--b)'};color:${s.on?'#4ADE80':'var(--m)'}">${s.on?(s.mode==='live'?'Connected':s.mode==='csv'?'Data impor CSV':'Connected (demo)'):'Disconnected'}</span></div>
+    <p class="text-sm mut">Kosongkan kolom di bawah untuk mencoba mode demo. Isi ketiganya untuk memakai Strava API v3 sungguhan. Data disimpan hanya di browser ini.</p>
+    <input id="sid" class="in" placeholder="Client ID" value="${esc(c.id||'')}">
+    <input id="ssec" class="in" type="password" placeholder="Client Secret" value="${esc(c.secret||'')}">
+    <input id="srt" class="in" type="password" placeholder="Refresh Token (scope activity:read_all)" value="${esc(c.rt||'')}">
+    <div class="flex gap-2 flex-wrap">${s.on?`<button class="btn" onclick="sync()"><i data-lucide="refresh-cw" class="w-4 h-4"></i>Sinkronkan</button><button class="gh" onclick="disc()">Putuskan</button>`:`<button class="btn" onclick="conn()" style="background:#FC4C02;color:#fff"><i data-lucide="link" class="w-4 h-4"></i>Connect with Strava</button>`}</div>
+    ${s.last?`<div class="text-xs mut">Sinkron terakhir: ${new Date(s.last).toLocaleString('id-ID')}</div>`:''}
+    <div class="border-t pt-3 grid gap-2" style="border-color:var(--b)"><div class="h text-xl">Impor arsip Strava (gratis, tanpa API)</div><p class="text-sm mut">Di Strava: My Account, Download or Delete Your Account, Request Your Archive. Ekstrak ZIP dari email, lalu pilih file activities.csv di sini.</p><input type="file" accept=".csv" onchange="importCSV(this)" class="text-sm mut"></div></div>
+  <div class="card p-4"><div class="h text-2xl mb-2">Aktivitas terakhir</div>${s.acts.length?s.acts.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,8).map(a=>`<div class="flex justify-between py-2 border-t first:border-0 text-sm" style="border-color:var(--b)"><div><b>${esc(a.name)}</b><div class="text-xs mut">${fdate(a.date)}</div></div><div class="text-right"><b>${a.km} km</b><div class="text-xs mut">${fp(a.min,a.km)} /km, ${a.min} mnt</div></div></div>`).join(''):'<div class="text-sm mut">Belum ada data. Hubungkan Strava untuk menarik lari terakhirmu.</div>'}</div></div>`;
+}
+
+/* ---------- Data saya: cadangan & pemulihan ---------- */
+function dataTab(){return `<div class="card p-4 grid gap-3 max-w-xl"><div class="h text-2xl">Data saya</div>
+  <p class="text-sm mut">Semua data tersimpan di browser perangkat ini saja, tidak dikirim ke server mana pun. Cadangkan secara berkala. File cadangan bisa dipulihkan di perangkat lain. Client Secret dan Refresh Token Strava tidak ikut dicadangkan.</p>
+  <div class="flex gap-2 flex-wrap"><button class="btn" onclick="backup()"><i data-lucide="download" class="w-4 h-4"></i>Cadangkan data</button>
+  <label class="gh cursor-pointer"><i data-lucide="upload" class="w-4 h-4"></i>Pulihkan dari file<input type="file" accept=".json" class="hidden" onchange="restore(this)"></label></div>
+  <div class="text-xs mut">${S.w.length} latihan, ${S.st.acts.length} aktivitas Strava</div></div>`}
+function backup(){const b=new Blob([JSON.stringify({v:1,w:S.w,st:{...S.st,cfg:{}}})],{type:'application/json'}),a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download='lariku-cadangan-'+iso(new Date())+'.json';a.click();URL.revokeObjectURL(a.href);toast('Cadangan diunduh')}
+async function restore(i){const f=i.files[0];if(!f)return;
+  try{const d=JSON.parse(await f.text());if(!Array.isArray(d.w))throw Error();
+    if(!confirm('Ganti semua data di perangkat ini dengan isi file cadangan?')){i.value='';return}
+    S.w=d.w;S.st={...S.st,...d.st,cfg:S.st.cfg||{}};saveAll();render();toast('Data dipulihkan')}
+  catch{toast('File cadangan tidak valid')}i.value=''}
+
+/* ---------- Router ---------- */
+function go(t){tab=t;render()}
+function render(){
+  $('#v').innerHTML=({dash,sched,strava,data:dataTab})[tab]();
+  document.querySelectorAll('[data-t]').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
+  lucide.createIcons();
+}
+$('#ty').innerHTML=Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join('');
+render();
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>
