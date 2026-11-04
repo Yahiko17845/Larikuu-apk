@@ -81,7 +81,7 @@ function toast(m){const t=$('#toast');t.textContent=m;t.classList.remove('hidden
 function seed(){const m=monday(new Date()),t=iso(new Date()),pl=[['easy',5,35,'Santai, napas teratur'],['strength',0,40,'Squat, lunge, deadlift'],['interval',6,40,'6 x 400 m'],['core',0,20,'Plank dan russian twist'],['rest',0,0,''],['tempo',7,42,'20 menit tempo'],['long',12,76,'Pace nyaman']];
   return pl.map((p,i)=>{const d=iso(addDays(m,i));return{id:uid(),date:d,type:p[0],km:p[1],min:p[2],note:p[3],done:d<t&&p[0]!=='rest'}})}
 let S={w:load('lk_w',null),st:load('lk_st',{on:false,mode:'',acts:[],cfg:{}})};
-if(!S.w){S.w=seed();store('lk_w',S.w)}
+if(!S.w){S.w=[];store('lk_w',S.w)}
 let tab='dash',period='w',wk=monday(new Date());
 const saveAll=()=>{store('lk_w',S.w);store('lk_st',S.st)};
 const runs=()=>[...S.w.filter(w=>w.done&&RUN.includes(w.type)&&!w.sid&&+w.km).map(w=>({date:w.date,km:+w.km,min:+w.min||0,cal:Math.round(w.km*65)})),...S.st.acts];
